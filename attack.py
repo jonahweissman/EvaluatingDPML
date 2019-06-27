@@ -164,6 +164,8 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
     pred_y = []
     pred_scores = []
     true_x = []
+    output_weights = []
+
     for c in unique_classes:
         #print('Training attack model for class {}...'.format(c))
         c_train_indices = train_indices[train_classes == c]
@@ -171,11 +173,12 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
         c_test_indices = test_indices[test_classes == c]
         c_test_x, c_test_y = test_x[c_test_indices], test_y[c_test_indices]
         c_dataset = (c_train_x, c_train_y, c_test_x, c_test_y)
-        _, c_pred_y, c_pred_scores, _, _, _ = train_model(c_dataset, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
+        c_output_layer, c_pred_y, c_pred_scores, _, _, _ = train_model(c_dataset, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
                                batch_size=batch_size, model=model, l2_ratio=l2_ratio, non_linearity='relu')
         true_y.append(c_test_y)
         pred_y.append(c_pred_y)
         true_x.append(c_test_x)
+        output_weights.append(lasagne.layers.get_all_param_values(c_output_layer))
         pred_scores.append(c_pred_scores)
 
     print('-' * 10 + 'FINAL EVALUATION' + '-' * 10 + '\n')
@@ -197,7 +200,7 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
     fpr, tpr, thresholds = roc_curve(true_y, pred_scores[:,0], pos_label=0)
     #plt.show()
 
-    return attack_adv, pred_scores
+    return attack_adv, pred_scores, {'output weights': output_weights}
 
 
 def save_data():
@@ -390,9 +393,9 @@ def run_experiment():
     true_y = np.append(train_y, test_y)
     batch_size = args.target_batch_size
     pred_y, membership, test_classes, train_loss, classifier, train_acc, test_acc = train_target_model(
-	    dataset=dataset,
-		hold_out_train_data=hold_out_train_data,
-		epochs=args.target_epochs,
+        dataset=dataset,
+        hold_out_train_data=hold_out_train_data,
+        epochs=args.target_epochs,
         batch_size=args.target_batch_size,
         learning_rate=args.target_learning_rate,
         n_hidden=args.target_n_hidden,
@@ -406,14 +409,17 @@ def run_experiment():
     
     features = get_random_features(true_x, range(true_x.shape[1]), 5)
     print(features)
-    attack_adv, attack_pred = attack_experiment(pred_y, membership, test_classes)
+    attack_adv, attack_pred, attack_data = attack_experiment(pred_y, membership, test_classes)
     mem_adv, mem_pred = membership_inference(true_y, pred_y, membership, train_loss)
     attr_adv, attr_mem, attr_pred = attribute_inference(true_x, true_y, batch_size, classifier, train_loss, features)
 
     if not os.path.exists(RESULT_PATH+args.train_dataset):
         os.makedirs(RESULT_PATH+args.train_dataset)
 
-    pickle.dump([train_acc, test_acc, train_loss, membership, attack_adv, attack_pred, mem_adv, mem_pred, attr_adv, attr_mem, attr_pred, features], open(RESULT_PATH+args.train_dataset+'/'+args.target_model+'_'+args.target_privacy+'_'+args.target_dp+'_'+str(args.target_epsilon)+'_'+str(args.run)+'.p', 'wb'))
+    pickle.dump([train_acc, test_acc, train_loss, membership, attack_adv, attack_pred, mem_adv, mem_pred, attr_adv, attr_mem, attr_pred, features, {
+        'target weights': dict((name, classifier.get_variable_value(name)) for name in classifier.get_variable_names()),
+        'attack weights': attack_data['output weights']
+        }], open(RESULT_PATH+args.train_dataset+'/'+args.target_model+'_'+args.target_privacy+'_'+args.target_dp+'_'+str(args.target_epsilon)+'_'+str(args.run)+'.p', 'wb'))
 
 
 if __name__ == '__main__':
