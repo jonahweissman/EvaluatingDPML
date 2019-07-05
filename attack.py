@@ -262,7 +262,7 @@ def load_data(data_name):
 
 
 
-def attack_experiment(attack_test_x, attack_test_y, test_classes,):
+def attack_experiment(attack_test_x, attack_test_y, test_classes, args):
     print('-' * 10 + 'TRAIN SHADOW' + '-' * 10 + '\n')
     attack_train_x, attack_train_y, train_classes = train_shadow_models(
         epochs=args.target_epochs,
