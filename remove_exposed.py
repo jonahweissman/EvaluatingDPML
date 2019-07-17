@@ -39,7 +39,7 @@ def attack_and_train_abridged_data(dataset, attack, members_to_exclude=[]):
             privacy='no_privacy')
 
     if attack == 'Shokri':
-        global class args:
+        class args:
             target_epochs = 100
             target_batch_size = 200
             target_learning_rate = 0.01
@@ -55,15 +55,15 @@ def attack_and_train_abridged_data(dataset, attack, members_to_exclude=[]):
             attack_l2_ratio = 1e-6
             attack_model = 'nn'
 
-        _, attack_pred = attack_experiment(attack_test_x, attack_test_y,
-                test_classes, args)
+        _, attack_pred = attack_experiment(args, attack_test_x, attack_test_y,
+                test_classes)
         revealed_members_list = revealed_members(
                 attack_test_y,
                 attack_pred,
                 threshold=0.5)
         n_fp = len(false_positives(attack_test_y, classify(attack_pred, 0.5)))
     elif attack == 'Yeom':
-        train_loss *= 0.01
+        train_loss *= 0.1
         _, mem_pred = membership_inference(
                 np.append(abridged_train_y, test_y),
                 attack_test_x,
