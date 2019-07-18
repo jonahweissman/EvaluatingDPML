@@ -22,6 +22,9 @@ def attack_and_train_abridged_data(dataset, attack, members_to_exclude=[]):
     mask[members_to_exclude] = False
     abridged_train_x = train_x[mask]
     abridged_train_y = train_y[mask] 
+    n_train_output_classes = len(np.unique(abridged_train_y))
+    n_test_output_classes = len(np.unique(test_y))
+    print(f"bincount: {np.bincount(abridged_train_y)}")
     # we won't be using the unabridged versions anymore
     del train_x
     del train_y
@@ -36,7 +39,8 @@ def attack_and_train_abridged_data(dataset, attack, members_to_exclude=[]):
             model='softmax',
             l2_ratio=1e-7,
             save=False,
-            privacy='no_privacy')
+            privacy='no_privacy',
+            n_output_classes=n_test_output_classes)
 
     if attack == 'Shokri':
         class args:
@@ -127,7 +131,7 @@ def threshold_fixed_fpr(membership, prediction, acceptable_fpr):
         return None
     return thresholds[len(l)-1]
 
-def classify(prediction, threshold, below_threshold_positive):
+def classify(prediction, threshold, below_threshold_positive=False):
     """classify predictions/weights by less than threshold (False) or greater (True)
        (reversed if below_threshold_positive is true"""
     if below_threshold_positive:

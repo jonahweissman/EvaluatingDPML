@@ -61,12 +61,18 @@ def load_attack_data():
     return train_x.astype('float32'), train_y.astype('int32'), test_x.astype('float32'), test_y.astype('int32')
 
 
-def train_target_model(dataset, hold_out_train_data=None, epochs=100, batch_size=100, learning_rate=0.01, l2_ratio=1e-7,
-                       n_hidden=50, model='nn', save=True, privacy='no_privacy', dp='dp', epsilon=0.5, delta=1e-5):
+def train_target_model(dataset, hold_out_train_data=None, epochs=100,
+                       batch_size=100, learning_rate=0.01, l2_ratio=1e-7,
+                       n_hidden=50, model='nn', save=True, privacy='no_privacy',
+                       dp='dp', epsilon=0.5, delta=1e-5, n_output_classes=None):
     train_x, train_y, test_x, test_y = dataset
 
-    classifier, _, _, train_loss, train_acc, test_acc = train_private(dataset, hold_out_train_data, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
-                               batch_size=batch_size, model=model, l2_ratio=l2_ratio, silent=False, privacy=privacy, dp=dp, epsilon=epsilon, delta=delta)
+    classifier, _, _, train_loss, train_acc, test_acc = \
+            train_private(dataset, hold_out_train_data, n_hidden=n_hidden,
+                          epochs=epochs, learning_rate=learning_rate,
+                          batch_size=batch_size, model=model, l2_ratio=l2_ratio,
+                          silent=False, privacy=privacy, dp=dp, epsilon=epsilon,
+                          delta=delta, n_output_classes=n_output_classes)
     # test data for attack model
     attack_x, attack_y = [], []
 
