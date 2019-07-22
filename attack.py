@@ -178,7 +178,7 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
         true_y.append(c_test_y)
         pred_y.append(c_pred_y)
         true_x.append(c_test_x)
-        output_weights.append(lasagne.layers.get_all_param_values(c_output_layer))
+        attack_weights.append(lasagne.layers.get_all_param_values(c_output_layer))
         pred_scores.append(c_pred_scores)
 
     print('-' * 10 + 'FINAL EVALUATION' + '-' * 10 + '\n')
@@ -200,7 +200,7 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
     fpr, tpr, thresholds = roc_curve(true_y, pred_scores[:,0], pos_label=0)
     #plt.show()
 
-    return attack_adv, pred_scores, {'output weights': output_weights}
+    return attack_adv, pred_scores, {'attack weights': attack_weights}
 
 
 def save_data():
@@ -418,7 +418,7 @@ def run_experiment():
 
     pickle.dump([train_acc, test_acc, train_loss, membership, attack_adv, attack_pred, mem_adv, mem_pred, attr_adv, attr_mem, attr_pred, features, {
         'target weights': dict((name, classifier.get_variable_value(name)) for name in classifier.get_variable_names()),
-        'attack weights': attack_data['output weights']
+        'attack weights': attack_data['attack weights']
         }], open(RESULT_PATH+args.train_dataset+'/'+args.target_model+'_'+args.target_privacy+'_'+args.target_dp+'_'+str(args.target_epsilon)+'_'+str(args.run)+'.p', 'wb'))
 
 
