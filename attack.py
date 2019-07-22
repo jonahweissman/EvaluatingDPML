@@ -61,11 +61,11 @@ def load_attack_data():
     return train_x.astype('float32'), train_y.astype('int32'), test_x.astype('float32'), test_y.astype('int32')
 
 
-def train_target_model(dataset, hold_out_train_data=None, epochs=100, batch_size=100, learning_rate=0.01, l2_ratio=1e-7,
+def train_target_model(dataset, epochs=100, batch_size=100, learning_rate=0.01, l2_ratio=1e-7,
                        n_hidden=50, model='nn', save=True, privacy='no_privacy', dp='dp', epsilon=0.5, delta=1e-5):
     train_x, train_y, test_x, test_y = dataset
 
-    classifier, _, _, train_loss, train_acc, test_acc = train_private(dataset, hold_out_train_data, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
+    classifier, _, _, train_loss, train_acc, test_acc = train_private(dataset, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
                                batch_size=batch_size, model=model, l2_ratio=l2_ratio, silent=False, privacy=privacy, dp=dp, epsilon=epsilon, delta=delta)
     # test data for attack model
     attack_x, attack_y = [], []
@@ -108,7 +108,7 @@ def train_target_model(dataset, hold_out_train_data=None, epochs=100, batch_size
 
 
 def train_shadow_models(n_hidden=50, epochs=100, n_shadow=20, learning_rate=0.05, batch_size=100, l2_ratio=1e-7,
-                        model='nn', save=True):
+        model='nn', save=True):
     # for getting probabilities
     input_var = T.matrix('x')
     # for attack model
@@ -120,7 +120,7 @@ def train_shadow_models(n_hidden=50, epochs=100, n_shadow=20, learning_rate=0.05
         train_x, train_y, test_x, test_y = data
         # train model
         output_layer, _, _, _, _, _ = train_model(data, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
-                                   batch_size=batch_size, model=model, l2_ratio=l2_ratio)
+                batch_size=batch_size, model=model, l2_ratio=l2_ratio)
         prob = lasagne.layers.get_output(output_layer, input_var, deterministic=True)
         prob_fn = theano.function([input_var], prob, allow_input_downcast=True)
         #print('Gather training data for attack model')
@@ -149,7 +149,7 @@ def train_shadow_models(n_hidden=50, epochs=100, n_shadow=20, learning_rate=0.05
 
 
 def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, batch_size=200, epochs=50,
-                       model='nn', l2_ratio=1e-7):
+        model='nn', l2_ratio=1e-7):
     if dataset is None:
         dataset = load_attack_data()
 
@@ -162,7 +162,7 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
 
     true_y = []
     pred_y = []
-    pred_scores = []
+    pred_scores = np.empty(len(test_y))
     true_x = []
     output_weights = []
 
@@ -174,31 +174,23 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
         c_test_x, c_test_y = test_x[c_test_indices], test_y[c_test_indices]
         c_dataset = (c_train_x, c_train_y, c_test_x, c_test_y)
         c_output_layer, c_pred_y, c_pred_scores, _, _, _ = train_model(c_dataset, n_hidden=n_hidden, epochs=epochs, learning_rate=learning_rate,
-                               batch_size=batch_size, model=model, l2_ratio=l2_ratio, non_linearity='relu')
+                batch_size=batch_size, model=model, l2_ratio=l2_ratio, non_linearity='relu')
         true_y.append(c_test_y)
         pred_y.append(c_pred_y)
         true_x.append(c_test_x)
         attack_weights.append(lasagne.layers.get_all_param_values(c_output_layer))
-        pred_scores.append(c_pred_scores)
+        # place c_pred_scores where it belongs in pred_scores (train, then test)
+        pred_scores[c_test_indices] = c_pred_scores[:, 1]
 
     print('-' * 10 + 'FINAL EVALUATION' + '-' * 10 + '\n')
     true_y = np.concatenate(true_y)
     pred_y = np.concatenate(pred_y)
     true_x = np.concatenate(true_x)
-    pred_scores = np.concatenate(pred_scores)
     #print('Testing Accuracy: {}'.format(accuracy_score(true_y, pred_y)))
     #print(classification_report(true_y, pred_y))
     fpr, tpr, thresholds = roc_curve(true_y, pred_y, pos_label=1)
     print(fpr, tpr, tpr-fpr)
     attack_adv = tpr[1]-fpr[1]
-    #plt.plot(fpr, tpr)
-
-    # membership
-    fpr, tpr, thresholds = roc_curve(true_y, pred_scores[:,1], pos_label=1)
-    #plt.plot(fpr, tpr)
-    # non-membership
-    fpr, tpr, thresholds = roc_curve(true_y, pred_scores[:,0], pos_label=0)
-    #plt.show()
 
     return attack_adv, pred_scores, {'attack weights': attack_weights}
 
@@ -218,11 +210,9 @@ def save_data():
         x, test_x, y, test_y = train_test_split(x, y, test_size=args.test_ratio, stratify=y)
 
     # need to partition target and shadow model data
-    assert len(x) > 3 * args.target_data_size # default multiplier = 2
+    assert len(x) > 2 * args.target_data_size
 
-    # doubled target_train_size to get hold out train set
-    target_data_indices, shadow_indices = get_data_indices(len(x), target_train_size=2*args.target_data_size)
-    target_data_indices, hold_out_train_indices = target_data_indices[:args.target_data_size], target_data_indices[args.target_data_size:]
+    target_data_indices, shadow_indices = get_data_indices(len(x), target_train_size=args.target_data_size)
     np.savez(MODEL_PATH + 'data_indices.npz', target_data_indices, shadow_indices)
 
     # target model's data
@@ -234,8 +224,6 @@ def save_data():
         test_y = test_y[:size]
     # save target data
     np.savez(DATA_PATH + 'target_data.npz', train_x, train_y, test_x, test_y)
-    # save hold out train data
-    np.savez(DATA_PATH + 'hold_out_train_data.npz', x[hold_out_train_indices], y[hold_out_train_indices], test_x, test_y)
 
     # shadow model's data
     target_size = len(target_data_indices)
@@ -268,44 +256,44 @@ def load_data(data_name):
 def attack_experiment(attack_test_x, attack_test_y, test_classes,):
     print('-' * 10 + 'TRAIN SHADOW' + '-' * 10 + '\n')
     attack_train_x, attack_train_y, train_classes = train_shadow_models(
-        epochs=args.target_epochs,
-        batch_size=args.target_batch_size,
-        learning_rate=args.target_learning_rate,
-        n_shadow=args.n_shadow,
-        n_hidden=args.target_n_hidden,
-        l2_ratio=args.target_l2_ratio,
-        model=args.target_model,
-        save=args.save_model)
+            epochs=args.target_epochs,
+            batch_size=args.target_batch_size,
+            learning_rate=args.target_learning_rate,
+            n_shadow=args.n_shadow,
+            n_hidden=args.target_n_hidden,
+            l2_ratio=args.target_l2_ratio,
+            model=args.target_model,
+            save=args.save_model)
 
     print('-' * 10 + 'TRAIN ATTACK' + '-' * 10 + '\n')
     dataset = (attack_train_x, attack_train_y, attack_test_x, attack_test_y)
     return train_attack_model(
-        dataset=dataset,
-        epochs=args.attack_epochs,
-        batch_size=args.attack_batch_size,
-        learning_rate=args.attack_learning_rate,
-        n_hidden=args.attack_n_hidden,
-        l2_ratio=args.attack_l2_ratio,
-        model=args.attack_model,
-        classes=(train_classes, test_classes))
+            dataset=dataset,
+            epochs=args.attack_epochs,
+            batch_size=args.attack_batch_size,
+            learning_rate=args.attack_learning_rate,
+            n_hidden=args.attack_n_hidden,
+            l2_ratio=args.attack_l2_ratio,
+            model=args.attack_model,
+            classes=(train_classes, test_classes))
 
 
-def membership_inference(true_y, pred_y, membership, train_loss):
-	print('-' * 10 + 'MEMBERSHIP INFERENCE' + '-' * 10 + '\n')    
-	pred_membership = np.where(log_loss(true_y, pred_y) <= train_loss, 1, 0)
-	#print(classification_report(membership, pred_membership))
-	fpr, tpr, thresholds = roc_curve(membership, pred_membership, pos_label=1)
-	print(fpr, tpr, tpr-fpr)
-	mem_adv = tpr[1]-fpr[1]
-	#plt.plot(fpr, tpr)
+    def membership_inference(true_y, pred_y, membership, train_loss):
+        print('-' * 10 + 'MEMBERSHIP INFERENCE' + '-' * 10 + '\n')    
+        pred_membership = np.where(log_loss(true_y, pred_y) <= train_loss, 1, 0)
+        #print(classification_report(membership, pred_membership))
+        fpr, tpr, thresholds = roc_curve(membership, pred_membership, pos_label=1)
+        print(fpr, tpr, tpr-fpr)
+        mem_adv = tpr[1]-fpr[1]
+        #plt.plot(fpr, tpr)
 
-	# membership
-	fpr, tpr, thresholds = roc_curve(membership, max(log_loss(true_y, pred_y)) - log_loss(true_y, pred_y), pos_label=1)
-	#plt.plot(fpr, tpr)
-	# non-membership
-	fpr, tpr, thresholds = roc_curve(membership, log_loss(true_y, pred_y), pos_label=0)
-	#plt.show()
-	return mem_adv, log_loss(true_y, pred_y)
+        # membership
+        fpr, tpr, thresholds = roc_curve(membership, max(log_loss(true_y, pred_y)) - log_loss(true_y, pred_y), pos_label=1)
+        #plt.plot(fpr, tpr)
+        # non-membership
+        fpr, tpr, thresholds = roc_curve(membership, log_loss(true_y, pred_y), pos_label=0)
+        #plt.show()
+        return mem_adv, log_loss(true_y, pred_y)
 
 
 def attribute_inference(true_x, true_y, batch_size, classifier, train_loss, features):
@@ -317,17 +305,17 @@ def attribute_inference(true_x, true_y, batch_size, classifier, train_loss, feat
         low_data, high_data, membership = getAttributeVariations(true_x, feature)
 
         pred_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={'x': low_data},
-            num_epochs=1,
-            shuffle=False)
+                x={'x': low_data},
+                num_epochs=1,
+                shuffle=False)
 
         predictions = classifier.predict(input_fn=pred_input_fn)
         _, low_op = get_predictions(predictions)
-        
+
         pred_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={'x': high_data},
-            num_epochs=1,
-            shuffle=False)
+                x={'x': high_data},
+                num_epochs=1,
+                shuffle=False)
 
         predictions = classifier.predict(input_fn=pred_input_fn)
         _, high_op = get_predictions(predictions)
@@ -337,7 +325,7 @@ def attribute_inference(true_x, true_y, batch_size, classifier, train_loss, feat
 
         low_op = log_loss(true_y, low_op)
         high_op = log_loss(true_y, high_op)
-        
+
         pred_membership = np.where(stats.norm(0, train_loss).pdf(low_op) >= stats.norm(0, train_loss).pdf(high_op), 0, 1)
         fpr, tpr, thresholds = roc_curve(membership, pred_membership, pos_label=1)
         print(fpr, tpr, tpr-fpr)
@@ -351,25 +339,25 @@ def attribute_inference(true_x, true_y, batch_size, classifier, train_loss, feat
         fpr, tpr, thresholds = roc_curve(membership, stats.norm(0, train_loss).pdf(low_op) - stats.norm(0, train_loss).pdf(high_op), pos_label=0)
         #plt.show()
 
-        
+
         attr_mem.append(membership)
         attr_pred.append(np.vstack((low_op, high_op)))
     return attr_adv, attr_mem, attr_pred
 
 
 def getAttributeVariations(data, feature):
-	low_data, high_data = np.copy(data), np.copy(data)
-	pivot = np.quantile(data[:,feature], 0.5)
-	low = np.quantile(data[:,feature], 0.25)
-	high = np.quantile(data[:,feature], 0.75)
-	membership = np.where(data[:,feature] <= pivot, 0, 1)
-	low_data[:,feature] = low
-	high_data[:,feature] = high
-	return low_data, high_data, membership
+    low_data, high_data = np.copy(data), np.copy(data)
+        pivot = np.quantile(data[:,feature], 0.5)
+        low = np.quantile(data[:,feature], 0.25)
+        high = np.quantile(data[:,feature], 0.75)
+        membership = np.where(data[:,feature] <= pivot, 0, 1)
+        low_data[:,feature] = low
+        high_data[:,feature] = high
+        return low_data, high_data, membership
 
 
 def log_loss(a, b):
-	return [-np.log(max(b[i,a[i]], SMALL_VALUE)) for i in range(len(a))]
+    return [-np.log(max(b[i,a[i]], SMALL_VALUE)) for i in range(len(a))]
 
 
 def get_random_features(data, pool, size):
@@ -385,28 +373,24 @@ def get_random_features(data, pool, size):
 def run_experiment():
     print('-' * 10 + 'TRAIN TARGET' + '-' * 10 + '\n')
     dataset = load_data('target_data.npz')
-    hold_out_train_data = None
-    if args.pretraining:
-        hold_out_train_data = load_data('hold_out_train_data.npz')
     train_x, train_y, test_x, test_y = dataset
     true_x = np.vstack((train_x, test_x))
     true_y = np.append(train_y, test_y)
     batch_size = args.target_batch_size
     pred_y, membership, test_classes, train_loss, classifier, train_acc, test_acc = train_target_model(
-        dataset=dataset,
-        hold_out_train_data=hold_out_train_data,
-        epochs=args.target_epochs,
-        batch_size=args.target_batch_size,
-        learning_rate=args.target_learning_rate,
-        n_hidden=args.target_n_hidden,
-        l2_ratio=args.target_l2_ratio,
-        model=args.target_model,
-        privacy=args.target_privacy,
-        dp=args.target_dp,
-        epsilon=args.target_epsilon,
-        delta=args.target_delta,
-        save=args.save_model)
-    
+            dataset=dataset,
+            epochs=args.target_epochs,
+            batch_size=args.target_batch_size,
+            learning_rate=args.target_learning_rate,
+            n_hidden=args.target_n_hidden,
+            l2_ratio=args.target_l2_ratio,
+            model=args.target_model,
+            privacy=args.target_privacy,
+            dp=args.target_dp,
+            epsilon=args.target_epsilon,
+            delta=args.target_delta,
+            save=args.save_model)
+
     features = get_random_features(true_x, range(true_x.shape[1]), 5)
     print(features)
     attack_adv, attack_pred, attack_data = attack_experiment(pred_y, membership, test_classes)
@@ -422,8 +406,8 @@ def run_experiment():
         }], open(RESULT_PATH+args.train_dataset+'/'+args.target_model+'_'+args.target_privacy+'_'+args.target_dp+'_'+str(args.target_epsilon)+'_'+str(args.run)+'.p', 'wb'))
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    if __name__ == '__main__':
+        parser = argparse.ArgumentParser()
     parser.add_argument('train_dataset', type=str)
     parser.add_argument('--run', type=int, default=1)
     parser.add_argument('--test_feat', type=str, default=None)
@@ -434,7 +418,6 @@ if __name__ == '__main__':
     parser.add_argument('--test_ratio', type=float, default=0.2)
     # target and shadow model configuration
     parser.add_argument('--n_shadow', type=int, default=5)
-    parser.add_argument('--pretraining', type=bool, default=False)
     parser.add_argument('--target_data_size', type=int, default=int(1e4))
     parser.add_argument('--target_model', type=str, default='nn')
     parser.add_argument('--target_learning_rate', type=float, default=0.01)
