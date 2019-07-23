@@ -164,7 +164,7 @@ def train_attack_model(classes, dataset=None, n_hidden=50, learning_rate=0.01, b
     pred_y = []
     pred_scores = np.empty(len(test_y))
     true_x = []
-    output_weights = []
+    attack_weights = []
 
     for c in unique_classes:
         #print('Training attack model for class {}...'.format(c))
