@@ -278,22 +278,22 @@ def attack_experiment(attack_test_x, attack_test_y, test_classes,):
             classes=(train_classes, test_classes))
 
 
-    def membership_inference(true_y, pred_y, membership, train_loss):
-        print('-' * 10 + 'MEMBERSHIP INFERENCE' + '-' * 10 + '\n')    
-        pred_membership = np.where(log_loss(true_y, pred_y) <= train_loss, 1, 0)
-        #print(classification_report(membership, pred_membership))
-        fpr, tpr, thresholds = roc_curve(membership, pred_membership, pos_label=1)
-        print(fpr, tpr, tpr-fpr)
-        mem_adv = tpr[1]-fpr[1]
-        #plt.plot(fpr, tpr)
+def membership_inference(true_y, pred_y, membership, train_loss):
+    print('-' * 10 + 'MEMBERSHIP INFERENCE' + '-' * 10 + '\n')    
+    pred_membership = np.where(log_loss(true_y, pred_y) <= train_loss, 1, 0)
+    #print(classification_report(membership, pred_membership))
+    fpr, tpr, thresholds = roc_curve(membership, pred_membership, pos_label=1)
+    print(fpr, tpr, tpr-fpr)
+    mem_adv = tpr[1]-fpr[1]
+    #plt.plot(fpr, tpr)
 
-        # membership
-        fpr, tpr, thresholds = roc_curve(membership, max(log_loss(true_y, pred_y)) - log_loss(true_y, pred_y), pos_label=1)
-        #plt.plot(fpr, tpr)
-        # non-membership
-        fpr, tpr, thresholds = roc_curve(membership, log_loss(true_y, pred_y), pos_label=0)
-        #plt.show()
-        return mem_adv, log_loss(true_y, pred_y)
+    # membership
+    fpr, tpr, thresholds = roc_curve(membership, max(log_loss(true_y, pred_y)) - log_loss(true_y, pred_y), pos_label=1)
+    #plt.plot(fpr, tpr)
+    # non-membership
+    fpr, tpr, thresholds = roc_curve(membership, log_loss(true_y, pred_y), pos_label=0)
+    #plt.show()
+    return mem_adv, log_loss(true_y, pred_y)
 
 
 def attribute_inference(true_x, true_y, batch_size, classifier, train_loss, features):
